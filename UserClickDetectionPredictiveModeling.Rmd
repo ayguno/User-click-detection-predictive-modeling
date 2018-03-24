@@ -63,7 +63,7 @@ ggplot(train_sample,aes(ip,is_attributed,col = factor(is_attributed)))+
         
 ```
 
-## Understanding the relationship between clicks and Device type:
+## Understanding the relationship between clicks and Device type
 
 ```{r}
 library(ggplot2)
@@ -104,4 +104,145 @@ processed_train_sample <- processing_pipeline(train_sample)
 
 The pipeline converts device to dummy variable.
 
-## 
+## Understanding the relationship between clicks and app type
+
+```{r}
+library(ggplot2)
+ggplot(train_sample,aes(app,is_attributed,col = factor(is_attributed), alpha(0.2)))+
+        scale_color_manual(values = c("red","navy"))+
+        geom_point()
+        
+```
+
+Some apps may be more likely to be downloaded. Convert app into dummy variable by adding this step into our pipeline:
+
+```{r}
+# Update our processing pipeline
+processing_pipeline <- function(dataset){
+        require(caret)
+        require(dplyr)
+        
+        # Convert device to dummy variable
+        dataset$device <- as.factor(dataset$device)
+        device_dummy <- dummyVars(is_attributed ~ device, dataset)
+        dataset <- cbind(dataset,predict(device_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -device)
+        
+        # Convert app to dummy variable
+        dataset$app <- as.factor(dataset$app)
+        app_dummy <- dummyVars(is_attributed ~ app, dataset)
+        dataset <- cbind(dataset,predict(app_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -app)
+        
+        
+        return(dataset)
+}
+```
+
+Test the current pipeline on training sample:
+
+```{r, eval= FALSE}
+# It works!
+processed_train_sample <- processing_pipeline(train_sample)
+```
+
+## Understanding the relationship between clicks and os type
+
+```{r}
+library(ggplot2)
+ggplot(train_sample,aes(os,is_attributed,col = factor(is_attributed), alpha(0.2)))+
+        scale_color_manual(values = c("red","navy"))+
+        geom_point()
+        
+```
+
+We will add os dummy variable by updating our pipeline:
+
+```{r}
+# Update our processing pipeline
+processing_pipeline <- function(dataset){
+        require(caret)
+        require(dplyr)
+        
+        # Convert device to dummy variable
+        dataset$device <- as.factor(dataset$device)
+        device_dummy <- dummyVars(is_attributed ~ device, dataset)
+        dataset <- cbind(dataset,predict(device_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -device)
+        
+        # Convert app to dummy variable
+        dataset$app <- as.factor(dataset$app)
+        app_dummy <- dummyVars(is_attributed ~ app, dataset)
+        dataset <- cbind(dataset,predict(app_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -app)
+        
+        # Convert os to dummy variable
+        dataset$os <- as.factor(dataset$os)
+        os_dummy <- dummyVars(is_attributed ~ os, dataset)
+        dataset <- cbind(dataset,predict(os_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -os)
+        
+        return(dataset)
+}
+```
+
+Test the current pipeline on training sample:
+
+```{r, eval= FALSE}
+# It works!
+processed_train_sample <- processing_pipeline(train_sample)
+```
+
+## Understanding the relationship between clicks and channel type
+
+```{r}
+library(ggplot2)
+ggplot(train_sample,aes(channel,is_attributed,col = factor(is_attributed), alpha(0.2)))+
+        scale_color_manual(values = c("red","navy"))+
+        geom_point()
+        
+```
+
+This rather looks random, but not as much as the IPs. My intuition says that this could be a partiallly relevant feature, so will convert it to dummy variable:
+
+```{r}
+# Update our processing pipeline
+processing_pipeline <- function(dataset){
+        require(caret)
+        require(dplyr)
+        
+        # Convert device to dummy variable
+        dataset$device <- as.factor(dataset$device)
+        device_dummy <- dummyVars(is_attributed ~ device, dataset)
+        dataset <- cbind(dataset,predict(device_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -device)
+        
+        # Convert app to dummy variable
+        dataset$app <- as.factor(dataset$app)
+        app_dummy <- dummyVars(is_attributed ~ app, dataset)
+        dataset <- cbind(dataset,predict(app_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -app)
+        
+        # Convert os to dummy variable
+        dataset$os <- as.factor(dataset$os)
+        os_dummy <- dummyVars(is_attributed ~ os, dataset)
+        dataset <- cbind(dataset,predict(os_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -os)
+        
+        # Convert channel to dummy variable
+        dataset$channel <- as.factor(dataset$channel)
+        channel_dummy <- dummyVars(is_attributed ~ channel, dataset)
+        dataset <- cbind(dataset,predict(channel_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -channel)
+        
+        return(dataset)
+}
+```
+
+Test the current pipeline on training sample:
+
+```{r, eval= FALSE}
+# It works!
+processed_train_sample <- processing_pipeline(train_sample)
+```
+
