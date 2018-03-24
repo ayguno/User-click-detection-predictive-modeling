@@ -1,0 +1,30 @@
+---
+title: "Feature Engineering for user click detection predictive modeling"
+author: "Ozan Aygun"
+date: "12/15/2017"
+output: 
+   html_document:
+        toc: true
+        number_sections: true
+        depth: 4
+        theme: cerulean
+        highlight: tango
+        df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(results = "markup", fig.align = "center",
+                      fig.width = 6, fig.height = 5,message=FALSE,warning=FALSE)
+```
+
+# Introduction and summary
+
+# Loading data
+
+We will start working with the small subset of the training data that contain 100.000 observations just to develops some expectations from the data. The actual training set contains ~ 200 milion observations, we will attempt to download and process it once we locked down our processing and feature engineering pipeline.
+
+```{r, cache=TRUE}
+
+train_sample <- read.csv("train_sample.csv", stringsAsFactors = F)
+
+```
