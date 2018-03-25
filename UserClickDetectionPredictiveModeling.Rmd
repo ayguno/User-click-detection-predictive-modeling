@@ -246,3 +246,138 @@ Test the current pipeline on training sample:
 processed_train_sample <- processing_pipeline(train_sample)
 ```
 
+## Exploring the relationship between click time and true events
+
+We have 2 kinds of time stamps as features:
+
+- click_time: timestamp of click (UTC)
+- attributed_time: if user download the app for after clicking an ad, this is the time of the app download
+
+### Exploring the position of attributed_time within click_times
+
+```{r}
+# Convert the time stamps to true time variables
+require(lubridate)
+
+#Fill the empty spaces with NA
+train_sample$click_time[train_sample$click_time == ""] <- NA
+train_sample$attributed_time[train_sample$attributed_time == ""] <- NA
+
+# Convert to true time variables
+train_sample$click_time <- ymd_hms(train_sample$click_time)
+train_sample$attributed_time <- ymd_hms(train_sample$attributed_time)
+```
+
+
+```{r}
+library(ggplot2)
+attributed_ip <- train_sample$ip[which(train_sample$is_attributed == 1)]
+attributed_train <- train_sample[which(train_sample$ip %in% attributed_ip),]
+
+# Randomly choose 10 ips to inspect
+random_ips <- sample(unique(attributed_train$ip),10)
+random_attributed_train <- attributed_train[which(attributed_train$ip %in% random_ips),]
+
+ggplot(random_attributed_train, aes(x = click_time))+
+        facet_grid(factor(random_attributed_train$ip) ~ .)+
+        geom_point(aes(x = click_time ,y = 1)) +
+        geom_vline(xintercept = random_attributed_train$attributed_time)
+```
+
+We see that downloading can take place at any point of the clicking periof from a particular attributed ip.
+
+### Exploring the impact of total click time from an ip and true events
+
+```{r}
+library(dplyr)
+total_click_time <- train_sample %>% group_by(ip) %>% summarise(total_click_time = max(click_time) - min(click_time))
+explore <- merge(train_sample,total_click_time, by = "ip")
+ggplot(explore, aes(x = factor(is_attributed),y = total_click_time))+
+        geom_boxplot()
+```
+
+```{r}
+ggplot(explore, aes(x = total_click_time))+
+        facet_grid( factor(explore$is_attributed) ~ .)+
+        geom_histogram(fill = "navy", bins = 100)
+```
+
+This feature has some potential. We note that the true events are generally associated with shorter click times (wihin a few seconds), but there are also outliers. Let's update out processing pipeline to include this new feature:
+
+```{r}
+# Update our processing pipeline
+processing_pipeline <- function(dataset){
+        require(caret)
+        require(dplyr)
+        require(lubridate)
+        
+        # Convert device to dummy variable
+        dataset$device <- as.factor(dataset$device)
+        device_dummy <- dummyVars(is_attributed ~ device, dataset)
+        dataset <- cbind(dataset,predict(device_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -device)
+        
+        # Convert app to dummy variable
+        dataset$app <- as.factor(dataset$app)
+        app_dummy <- dummyVars(is_attributed ~ app, dataset)
+        dataset <- cbind(dataset,predict(app_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -app)
+        
+        # Convert os to dummy variable
+        dataset$os <- as.factor(dataset$os)
+        os_dummy <- dummyVars(is_attributed ~ os, dataset)
+        dataset <- cbind(dataset,predict(os_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -os)
+        
+        # Convert channel to dummy variable
+        dataset$channel <- as.factor(dataset$channel)
+        channel_dummy <- dummyVars(is_attributed ~ channel, dataset)
+        dataset <- cbind(dataset,predict(channel_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -channel)
+        
+        ###############################
+        # Add total_click_time feature
+        ###############################
+        # Fill the empty spaces with NA
+        dataset$click_time[dataset$click_time == ""] <- NA
+        dataset$attributed_time[dataset$attributed_time == ""] <- NA
+        
+        # Convert to true time variables
+        dataset$click_time <- ymd_hms(dataset$click_time)
+        dataset$attributed_time <- ymd_hms(dataset$attributed_time)
+        
+        total_click_frame <- dataset %>% group_by(ip) %>% summarise(total_click_time = max(click_time) - min(click_time))
+        dataset <- merge(dataset,total_click_frame, by = "ip", sort = FALSE)
+        
+        return(dataset)
+}
+```
+
+```{r, cache=TRUE}
+train_sample <- read.csv("train_sample.csv", stringsAsFactors = F)
+```
+
+Test the current pipeline on training sample:
+
+```{r, eval= FALSE}
+# It works!
+processed_train_sample <- processing_pipeline(train_sample)
+```
+
+### Exploring the impact of total number of clicks from an ip and true events
+
+```{r}
+require(dplyr)
+require(ggplot2)
+total_clicks_frame <- train_sample %>% group_by(ip) %>% summarise(total_clicks = n())
+explore <- merge(train_sample,total_clicks_frame, by = "ip", sort =  FALSE)
+ggplot(explore, aes(x=factor(is_attributed), y=log(total_clicks)))+
+        geom_boxplot()
+```
+
+This is a good feature. We will add log(total_clicks + 1) as a new feature by updating our pipeline:
+
+
+
+
+
