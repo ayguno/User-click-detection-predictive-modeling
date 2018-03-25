@@ -377,6 +377,62 @@ ggplot(explore, aes(x=factor(is_attributed), y=log(total_clicks)))+
 
 This is a good feature. We will add log(total_clicks + 1) as a new feature by updating our pipeline:
 
+```{r}
+# Update our processing pipeline
+processing_pipeline <- function(dataset){
+        require(caret)
+        require(dplyr)
+        require(lubridate)
+        
+        # Convert device to dummy variable
+        dataset$device <- as.factor(dataset$device)
+        device_dummy <- dummyVars(is_attributed ~ device, dataset)
+        dataset <- cbind(dataset,predict(device_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -device)
+        
+        # Convert app to dummy variable
+        dataset$app <- as.factor(dataset$app)
+        app_dummy <- dummyVars(is_attributed ~ app, dataset)
+        dataset <- cbind(dataset,predict(app_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -app)
+        
+        # Convert os to dummy variable
+        dataset$os <- as.factor(dataset$os)
+        os_dummy <- dummyVars(is_attributed ~ os, dataset)
+        dataset <- cbind(dataset,predict(os_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -os)
+        
+        # Convert channel to dummy variable
+        dataset$channel <- as.factor(dataset$channel)
+        channel_dummy <- dummyVars(is_attributed ~ channel, dataset)
+        dataset <- cbind(dataset,predict(channel_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -channel)
+        
+        ###############################
+        # Add total_click_time feature
+        ###############################
+        # Fill the empty spaces with NA
+        dataset$click_time[dataset$click_time == ""] <- NA
+        dataset$attributed_time[dataset$attributed_time == ""] <- NA
+        
+        # Convert to true time variables
+        dataset$click_time <- ymd_hms(dataset$click_time)
+        dataset$attributed_time <- ymd_hms(dataset$attributed_time)
+        
+        total_click_frame <- dataset %>% group_by(ip) %>% summarise(total_click_time = max(click_time) - min(click_time))
+        dataset <- merge(dataset,total_click_frame, by = "ip", sort = FALSE)
+        
+        ################################
+        # Add total_clicks feature
+        ###############################
+        total_clicks_frame <- dataset %>% group_by(ip) %>% summarise(total_clicks = n())
+        total_clicks_frame$total_clicks <- log(total_clicks_frame$total_clicks + 1)
+        colnames(total_clicks_frame)[2] <- "log_total_clicks"
+        dataset <- merge(dataset,total_clicks_frame, by = "ip", sort =  FALSE)
+        
+        return(dataset)
+}
+```
 
 
 
