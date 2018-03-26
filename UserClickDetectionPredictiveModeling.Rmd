@@ -434,6 +434,244 @@ processing_pipeline <- function(dataset){
 }
 ```
 
+Test the current pipeline on training sample:
+
+```{r, eval= FALSE}
+# It works!
+processed_train_sample <- processing_pipeline(train_sample)
+```
+
+### Explore the relationship between total_time & total_clicks interaction and true events
+
+```{r}
+plot(processed_train_sample$log_total_clicks,log(as.numeric(processed_train_sample$total_click_time+1)), col = ifelse(processed_train_sample$is_attributed == 1, "red","blue"), pch = 19, 
+     cex = ifelse(processed_train_sample$is_attributed == 1,1,0.1), alpha = 0.8)
+```
+
+We note that there is some relationship between these two features to explain true events. 
+
+```{r}
+# Their ratio is not any better than one feature
+library(ggplot2)
+ggplot(processed_train_sample,aes(factor(is_attributed),log(as.numeric(total_click_time+1))/log_total_clicks))+
+geom_boxplot()
+```
+
+```{r}
+# Their product is not any better than one feature
+library(ggplot2)
+ggplot(processed_train_sample,aes(factor(is_attributed),log(as.numeric(total_click_time+1)) * log_total_clicks))+
+geom_boxplot()
+```
+
+# Finalizing the processing and feature engineering pipeline
+
+Before we finalize the pipeline, we will add the following steps:
+
+- convert total_click_time to log scale
+- remove ip, click_time, attributed_time features
+- make feature names Python compatible
+
+```{r}
+# Update our processing pipeline
+processing_pipeline <- function(dataset){
+        require(caret)
+        require(dplyr)
+        require(lubridate)
+        
+        # Convert device to dummy variable
+        dataset$device <- as.factor(dataset$device)
+        device_dummy <- dummyVars(is_attributed ~ device, dataset)
+        dataset <- cbind(dataset,predict(device_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -device)
+        
+        # Convert app to dummy variable
+        dataset$app <- as.factor(dataset$app)
+        app_dummy <- dummyVars(is_attributed ~ app, dataset)
+        dataset <- cbind(dataset,predict(app_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -app)
+        
+        # Convert os to dummy variable
+        dataset$os <- as.factor(dataset$os)
+        os_dummy <- dummyVars(is_attributed ~ os, dataset)
+        dataset <- cbind(dataset,predict(os_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -os)
+        
+        # Convert channel to dummy variable
+        dataset$channel <- as.factor(dataset$channel)
+        channel_dummy <- dummyVars(is_attributed ~ channel, dataset)
+        dataset <- cbind(dataset,predict(channel_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -channel)
+        
+        ###############################
+        # Add total_click_time feature
+        ###############################
+        # Fill the empty spaces with NA
+        dataset$click_time[dataset$click_time == ""] <- NA
+        dataset$attributed_time[dataset$attributed_time == ""] <- NA
+        
+        # Convert to true time variables
+        dataset$click_time <- ymd_hms(dataset$click_time)
+        dataset$attributed_time <- ymd_hms(dataset$attributed_time)
+        
+        total_click_frame <- dataset %>% group_by(ip) %>% summarise(total_click_time = max(click_time) - min(click_time))
+        total_click_frame$total_click_time <- log(as.numeric(total_click_frame$total_click_time + 1))
+        colnames(total_click_frame)[2] <- "log_total_click_time"
+        dataset <- merge(dataset,total_click_frame, by = "ip", sort = FALSE)
+        
+        ################################
+        # Add total_clicks feature
+        ###############################
+        total_clicks_frame <- dataset %>% group_by(ip) %>% summarise(total_clicks = n())
+        total_clicks_frame$total_clicks <- log(total_clicks_frame$total_clicks + 1)
+        colnames(total_clicks_frame)[2] <- "log_total_clicks"
+        dataset <- merge(dataset,total_clicks_frame, by = "ip", sort =  FALSE)
+        
+        ################################
+        # Remove base features
+        ###############################
+        
+        dataset <- dplyr::select(dataset, -ip)
+        dataset <- dplyr::select(dataset, -click_time)
+        dataset <- dplyr::select(dataset, -attributed_time)
+        
+        #######################################
+        # Make feature names Python compatible 
+        #######################################
+        
+        colnames(dataset) <- sapply(colnames(dataset), function(x){return(gsub("\\.","_",x))})
+        
+        return(dataset)
+}
+```
+
+Test the current pipeline on training sample:
+
+```{r, eval= FALSE}
+# It works!
+processed_train_sample <- processing_pipeline(train_sample)
+```
+
+# Processing the test data set
+
+The next step is to process the test set we downloaded using the same pipeline:
+
+```{r,eval=FALSE}
+test_set <- read.csv("test.csv", stringsAsFactors = FALSE)
+```
+
+```{r}
+head(test_set)
+```
+
+```{r}
+tail(test_set)
+```
+
+Save and remove the click_id for future use during submissions:
+
+```{r}
+click_id = data.frame(click_id = test_set$click_id)
+write.csv(click_id,"click_id.csv", row.names = FALSE)
+```
+
+```{r}
+test_set <- dplyr::select(test_set, - click_id)
+```
 
 
+We need to update the pipeline to remove attributed_time only from the training sets:
 
+```{r}
+# Update our processing pipeline
+processing_pipeline <- function(dataset){
+        require(caret)
+        require(dplyr)
+        require(lubridate)
+        
+        # Convert device to dummy variable
+        dataset$device <- as.factor(dataset$device)
+        device_dummy <- dummyVars(is_attributed ~ device, dataset)
+        dataset <- cbind(dataset,predict(device_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -device)
+        
+        # Convert app to dummy variable
+        dataset$app <- as.factor(dataset$app)
+        app_dummy <- dummyVars(is_attributed ~ app, dataset)
+        dataset <- cbind(dataset,predict(app_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -app)
+        
+        # Convert os to dummy variable
+        dataset$os <- as.factor(dataset$os)
+        os_dummy <- dummyVars(is_attributed ~ os, dataset)
+        dataset <- cbind(dataset,predict(os_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -os)
+        
+        # Convert channel to dummy variable
+        dataset$channel <- as.factor(dataset$channel)
+        channel_dummy <- dummyVars(is_attributed ~ channel, dataset)
+        dataset <- cbind(dataset,predict(channel_dummy, newdata = dataset))
+        dataset <- dplyr::select(dataset, -channel)
+        
+        ###############################
+        # Add total_click_time feature
+        ###############################
+        # Fill the empty spaces with NA
+        dataset$click_time[dataset$click_time == ""] <- NA
+        # Convert to true time variables
+        dataset$click_time <- ymd_hms(dataset$click_time)
+        total_click_frame <- dataset %>% group_by(ip) %>% summarise(total_click_time = max(click_time) - min(click_time))
+        total_click_frame$total_click_time <- log(as.numeric(total_click_frame$total_click_time + 1))
+        colnames(total_click_frame)[2] <- "log_total_click_time"
+        dataset <- merge(dataset,total_click_frame, by = "ip", sort = FALSE)
+        
+        ################################
+        # Add total_clicks feature
+        ###############################
+        total_clicks_frame <- dataset %>% group_by(ip) %>% summarise(total_clicks = n())
+        total_clicks_frame$total_clicks <- log(total_clicks_frame$total_clicks + 1)
+        colnames(total_clicks_frame)[2] <- "log_total_clicks"
+        dataset <- merge(dataset,total_clicks_frame, by = "ip", sort =  FALSE)
+        
+        ################################
+        # Remove base features
+        ###############################
+        
+        dataset <- dplyr::select(dataset, -ip)
+        dataset <- dplyr::select(dataset, -click_time)
+        
+        if("attributed_time" %in% colnames(dataset) ){dataset <- dplyr::select(dataset, -attributed_time)}
+        
+        #######################################
+        # Make feature names Python compatible 
+        #######################################
+        
+        colnames(dataset) <- sapply(colnames(dataset), function(x){return(gsub("\\.","_",x))})
+        
+        return(dataset)
+}
+```
+
+# Processing and saving the test set
+
+Let's process and save the test set in chunks of 10000 samples:
+
+```{r, eval= FALSE}
+
+chunks = seq(from = 1, to= nrow(test_set), by = 10000)
+chunks <- c(chunks,nrow(test_set))
+```
+
+```{r}
+#for(i in 1:(length(chunks)-1)){
+for(i in 1:5){
+        
+        dataset <- test_set[chunks[i]:chunks[i+1],]
+        processed_dataset <- processing_pipeline(dataset)
+        write.csv(dataset,"test_processed.csv", row.names = FALSE, append = TRUE)
+        
+        print(paste0("Processed chunk:", chunks[i],"\n"))
+        
+}
+
+```
