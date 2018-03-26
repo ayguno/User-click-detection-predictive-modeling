@@ -580,9 +580,35 @@ test_set <- dplyr::select(test_set, - click_id)
 ```
 
 
-We need to update the pipeline to remove attributed_time only from the training sets:
+We need to update the pipeline to remove attributed_time only from the training sets.
+
+In addition we also need to lock down the dummy transformation objects developed using the training sample. These will be reused by all other sets we will process to ensure consistency:
+
 
 ```{r}
+
+# Lock down the dummy processors
+require(caret)
+# Convert device to dummy variable
+        train_sample$device <- as.factor(train_sample$device)
+        device_dummy <- dummyVars(is_attributed ~ device, train_sample)
+        saveRDS(object = device_dummy,"device_dummy.rds")   
+        
+ # Convert app to dummy variable
+        train_sample$app <- as.factor(train_sample$app)
+        app_dummy <- dummyVars(is_attributed ~ app, train_sample)
+        saveRDS(object = app_dummy,"app_dummy.rds")
+        
+# Convert os to dummy variable
+        train_sample$os <- as.factor(train_sample$os)
+        os_dummy <- dummyVars(is_attributed ~ os, train_sample)
+        saveRDS(object = os_dummy,"os_dummy.rds")
+        
+# Convert channel to dummy variable
+        train_sample$channel <- as.factor(train_sample$channel)
+        channel_dummy <- dummyVars(is_attributed ~ channel, train_sample)
+        saveRDS(object = channel_dummy,"channel_dummy.rds")
+        
 # Update our processing pipeline
 processing_pipeline <- function(dataset){
         require(caret)
@@ -590,26 +616,22 @@ processing_pipeline <- function(dataset){
         require(lubridate)
         
         # Convert device to dummy variable
-        dataset$device <- as.factor(dataset$device)
-        device_dummy <- dummyVars(is_attributed ~ device, dataset)
+        device_dummy <- readRDS("device_dummy.rds")
         dataset <- cbind(dataset,predict(device_dummy, newdata = dataset))
         dataset <- dplyr::select(dataset, -device)
         
         # Convert app to dummy variable
-        dataset$app <- as.factor(dataset$app)
-        app_dummy <- dummyVars(is_attributed ~ app, dataset)
+        app_dummy <- readRDS("app_dummy.rds")
         dataset <- cbind(dataset,predict(app_dummy, newdata = dataset))
         dataset <- dplyr::select(dataset, -app)
         
         # Convert os to dummy variable
-        dataset$os <- as.factor(dataset$os)
-        os_dummy <- dummyVars(is_attributed ~ os, dataset)
+        os_dummy <- readRDS("os_dummy.rds")
         dataset <- cbind(dataset,predict(os_dummy, newdata = dataset))
         dataset <- dplyr::select(dataset, -os)
         
         # Convert channel to dummy variable
-        dataset$channel <- as.factor(dataset$channel)
-        channel_dummy <- dummyVars(is_attributed ~ channel, dataset)
+        channel_dummy <- saveRDS("channel_dummy.rds")
         dataset <- cbind(dataset,predict(channel_dummy, newdata = dataset))
         dataset <- dplyr::select(dataset, -channel)
         
