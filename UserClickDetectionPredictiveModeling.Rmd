@@ -557,7 +557,9 @@ processed_train_sample <- processing_pipeline(train_sample)
 The next step is to process the test set we downloaded using the same pipeline:
 
 ```{r,eval=FALSE}
+start = Sys.Date()
 test_set <- read.csv("test.csv", stringsAsFactors = FALSE)
+Sys.Date() - start
 ```
 
 ```{r}
@@ -586,7 +588,6 @@ In addition we also need to lock down the dummy transformation objects developed
 
 
 ```{r}
-
 # Lock down the dummy processors
 require(caret)
 # Convert device to dummy variable
@@ -608,7 +609,10 @@ require(caret)
         train_sample$channel <- as.factor(train_sample$channel)
         channel_dummy <- dummyVars(is_attributed ~ channel, train_sample)
         saveRDS(object = channel_dummy,"channel_dummy.rds")
-        
+```
+
+```{r}
+                
 # Update our processing pipeline
 processing_pipeline <- function(dataset){
         require(caret)
@@ -616,22 +620,26 @@ processing_pipeline <- function(dataset){
         require(lubridate)
         
         # Convert device to dummy variable
+        dataset$device <- as.factor(dataset$device)
         device_dummy <- readRDS("device_dummy.rds")
         dataset <- cbind(dataset,predict(device_dummy, newdata = dataset))
         dataset <- dplyr::select(dataset, -device)
         
         # Convert app to dummy variable
+        dataset$app <- as.factor(dataset$app)
         app_dummy <- readRDS("app_dummy.rds")
         dataset <- cbind(dataset,predict(app_dummy, newdata = dataset))
         dataset <- dplyr::select(dataset, -app)
         
         # Convert os to dummy variable
+        dataset$os <- as.factor(dataset$os)
         os_dummy <- readRDS("os_dummy.rds")
         dataset <- cbind(dataset,predict(os_dummy, newdata = dataset))
         dataset <- dplyr::select(dataset, -os)
         
         # Convert channel to dummy variable
-        channel_dummy <- saveRDS("channel_dummy.rds")
+        dataset$channel <- as.factor(dataset$channel)
+        channel_dummy <- readRDS("channel_dummy.rds")
         dataset <- cbind(dataset,predict(channel_dummy, newdata = dataset))
         dataset <- dplyr::select(dataset, -channel)
         
@@ -674,7 +682,15 @@ processing_pipeline <- function(dataset){
 }
 ```
 
-# Processing and saving the test set
+Test the current pipeline on training sample:
+
+```{r, eval= FALSE}
+# It works!
+processed_train_sample <- processing_pipeline(train_sample)
+```
+
+
+#  Processing and saving the test set
 
 Let's process and save the test set in chunks of 10000 samples:
 
@@ -691,7 +707,148 @@ for(i in 1:5){
         dataset <- test_set[chunks[i]:chunks[i+1],]
         processed_dataset <- processing_pipeline(dataset)
         write.csv(dataset,"test_processed.csv", row.names = FALSE, append = TRUE)
+        print(paste0("Processed chunk:", chunks[i],"\n"))
         
+}
+
+```
+
+# Updating the caret-based pipeline to allow feature extraction at the first instance
+
+We note that some features have levels that might only exist in the entire training set. dummyVars can not deal with this type of problem. Therefore, we will further customize the processing pipeline to tackle this problem:
+
+```{r}
+                
+# Update our processing pipeline
+processing_pipeline <- function(dataset){
+        require(caret)
+        require(dplyr)
+        require(lubridate)
+        
+        # Convert device to factor variable
+        dataset$device <- as.factor(dataset$device)
+        # Convert app to factor variable
+        dataset$app <- as.factor(dataset$app)
+        # Convert os to factor variable
+        dataset$os <- as.factor(dataset$os)
+        # Convert channel to factor variable
+        dataset$channel <- as.factor(dataset$channel)
+        
+        # A generic function that gets a data set and converts all factor variables to dummy variables
+        convert.to.dummy <- function(data.set){
+                cat.var <-NULL
+                temp.data <- data.frame(1:nrow(data.set))
+                   for(i in 1:ncol(data.set)){
+                        if(class(data.set[,i]) == "factor"){
+                                cat.var <- c(cat.var,i)
+                                factor.levels <- levels(data.set[,i]) 
+                                # Try to find a way to classify NA's as "NO" 
+                                # otherwise they generate problem downstream
+                                        # First check if there is any 'NA-level'
+                                        if(any(is.na(data.set[,i]))){
+                                                dummy.vector = ifelse(is.na(data.set[,i]),1,0)
+                                                dummy.vector <- data.frame(dummy.vector)
+                                                colnames(dummy.vector)[1] = paste("NO",names((data.set)[i]),
+                                                                                  sep = ".")
+                                                temp.data <- cbind(temp.data,dummy.vector)
+                                        }
+                                
+                                        for(j in seq_along(factor.levels)){ # Then deal with normal factor levels
+                                        dummy.vector = ifelse(data.set[,i] == factor.levels[j],1,0)
+                                        
+                                        #Since we already dealt with NAs above
+                                        if(any(is.na(dummy.vector))){dummy.vector[is.na(dummy.vector)] <- 0} 
+                                        
+                                        dummy.vector <- data.frame(dummy.vector)
+                                        colnames(dummy.vector)[1] = paste(names((data.set)[i]),
+                                                                          factor.levels[j],sep = ".")
+                                        temp.data <- cbind(temp.data,dummy.vector)
+                                        }
+                        }
+                   }
+                   #Remove the original categorical variables from data.set
+                   data.set <- data.set[,-cat.var]     
+                   #Add the dummy.variable set
+                   temp.data <- temp.data[,-1] # remove the unnecessary column
+                   data.set <- cbind(data.set,temp.data)
+                   
+                   return(data.set)     
+        }
+        
+        # Use convert.to.dummy to generate dummy variables
+        dataset <- convert.to.dummy(dataset)
+        
+        ###############################
+        # Add total_click_time feature
+        ###############################
+        # Fill the empty spaces with NA
+        dataset$click_time[dataset$click_time == ""] <- NA
+        # Convert to true time variables
+        dataset$click_time <- ymd_hms(dataset$click_time)
+        total_click_frame <- dataset %>% group_by(ip) %>% summarise(total_click_time = max(click_time) - min(click_time))
+        total_click_frame$total_click_time <- log(as.numeric(total_click_frame$total_click_time + 1))
+        colnames(total_click_frame)[2] <- "log_total_click_time"
+        dataset <- merge(dataset,total_click_frame, by = "ip", sort = FALSE)
+        
+        ################################
+        # Add total_clicks feature
+        ###############################
+        total_clicks_frame <- dataset %>% group_by(ip) %>% summarise(total_clicks = n())
+        total_clicks_frame$total_clicks <- log(total_clicks_frame$total_clicks + 1)
+        colnames(total_clicks_frame)[2] <- "log_total_clicks"
+        dataset <- merge(dataset,total_clicks_frame, by = "ip", sort =  FALSE)
+        
+        ################################
+        # Remove base features
+        ###############################
+        
+        dataset <- dplyr::select(dataset, -ip)
+        dataset <- dplyr::select(dataset, -click_time)
+        
+        if("attributed_time" %in% colnames(dataset) ){dataset <- dplyr::select(dataset, -attributed_time)}
+        
+        #######################################
+        # Make feature names Python compatible 
+        #######################################
+        
+        colnames(dataset) <- sapply(colnames(dataset), function(x){return(gsub("\\.","_",x))})
+        
+        return(dataset)
+}
+```
+
+```{r}
+processed_train_sample2 <- processing_pipeline(train_sample)
+```
+
+```{r}
+head(processed_train_sample$app_14)
+head(processed_train_sample2$app_14)
+```
+```{r}
+tail(processed_train_sample$os_36,200)
+tail(processed_train_sample2$os_36,200)
+```
+
+It looks like our modified pipeline generates an equivalent set of dummy variables.
+
+##  Processing and saving the test set
+
+Let's process and save the test set in chunks of 10000 samples using the updated pipeline:
+
+```{r, eval= FALSE}
+
+chunks = seq(from = 1, to= nrow(test_set), by = 10000)
+chunks <- c(chunks,nrow(test_set))
+```
+
+```{r}
+#for(i in 1:(length(chunks)-1)){
+for(i in 1:5){
+        
+        dataset <- test_set[chunks[i]:chunks[i+1],]
+        processed_dataset <- processing_pipeline(dataset)
+        write.csv(dataset,"test_processed.csv", row.names = FALSE, append = TRUE)
         print(paste0("Processed chunk:", chunks[i],"\n"))
         
 }
