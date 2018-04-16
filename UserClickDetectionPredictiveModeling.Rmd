@@ -834,23 +834,36 @@ It looks like our modified pipeline generates an equivalent set of dummy variabl
 
 ##  Processing and saving the test set
 
-Let's process and save the test set in chunks of 10000 samples using the updated pipeline:
+Let's process and save the test set  using the updated pipeline:
 
-```{r, eval= FALSE}
 
-chunks = seq(from = 1, to= nrow(test_set), by = 10000)
-chunks <- c(chunks,nrow(test_set))
+```{r}
+setwd("/Volumes/500GB/Data_science/Kaggle/User-click-detection-predictive-modeling")
+start = Sys.time()
+test_set <- read.csv("test.csv", stringsAsFactors = FALSE)
+Sys.time() - start
 ```
 
 ```{r}
-#for(i in 1:(length(chunks)-1)){
-for(i in 1:5){
-        
-        dataset <- test_set[chunks[i]:chunks[i+1],]
-        processed_dataset <- processing_pipeline(dataset)
-        write.csv(dataset,"test_processed.csv", row.names = FALSE, append = TRUE)
-        print(paste0("Processed chunk:", chunks[i],"\n"))
-        
+print(paste0("Starting time: ", Sys.time()))
+# Can we process the test data in chunks?
+chunks = 0
+processed_dataset = processing_pipeline(test_set[1:100,])
+start = 101
+for(i in 1:187904){
+        chunks = chunks + 1
+        endrow = start + 99
+        if(endrow > nrow(test_set)){endrow <- nrow(test_set)}
+        print(paste0("Start chunk:", chunks))
+        dataset <- test_set[start:endrow,]
+        processed_dataset_temp <- processing_pipeline(dataset)
+        processed_dataset <- merge(processed_dataset,processed_dataset_temp, all = TRUE)
+        print(paste0("Processed chunk:", chunks))
+        start = start + 100
 }
-
+print(paste0("End processing starting writing: ", Sys.time()))
+write.csv(processed_dataset,file = "test_processed.csv", row.names = FALSE)
+print(paste0("Finished writing: ", Sys.time()))
 ```
+
+This type of pipelining is not computationally efficient. I will try to address the problem using a Python pipeline and feature selection instead.
